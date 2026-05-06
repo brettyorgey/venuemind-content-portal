@@ -1,10 +1,6 @@
 {
   "routes": [
     {
-      "route": "/api/anthropic/*",
-      "rewrite": "https://venuemind-portal-function.azurewebsites.net/api/anthropic/*"
-    },
-    {
       "route": "/*",
       "serve": "/index.html",
       "statusCode": 200
