@@ -1,0 +1,21 @@
+{
+  "routes": [
+    {
+      "route": "/api/anthropic/*",
+      "rewrite": "https://venuemind-portal-function.azurewebsites.net/api/anthropic/*"
+    },
+    {
+      "route": "/*",
+      "serve": "/index.html",
+      "statusCode": 200
+    }
+  ],
+  "navigationFallback": {
+    "rewrite": "/index.html",
+    "exclude": ["/assets/*", "/icons.svg", "/favicon.svg"]
+  },
+  "mimeTypes": {
+    ".json": "application/json",
+    ".svg": "image/svg+xml"
+  }
+}
