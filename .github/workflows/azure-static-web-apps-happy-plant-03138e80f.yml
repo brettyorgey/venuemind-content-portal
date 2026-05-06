@@ -30,7 +30,7 @@ jobs:
           node-version: '22'
 
       - name: Install dependencies
-        run: npm ci
+        run: npm install
 
       - name: Build Vite app
         run: npm run build
@@ -85,12 +85,12 @@ jobs:
 
       - name: Install dependencies
         working-directory: portal-function
-        run: npm ci
+        run: npm install
 
       - name: Zip package for deployment
         run: |
           cd portal-function
-          zip -r ../function-deploy.zip . --exclude "*.git*"
+          zip -r ../function-deploy.zip . --exclude "*.git*" --exclude "*.zip"
 
       - name: Deploy to Azure Functions
         uses: Azure/functions-action@v1
