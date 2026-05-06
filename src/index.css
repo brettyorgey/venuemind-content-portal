@@ -1,0 +1,144 @@
+/* ============================================================
+   VenueMind — Content Delivery Portal
+   index.css  |  CDP-032  |  Own The Moment  |  April 2026
+
+   Replace /src/index.css with this file.
+   No component changes required — all existing var() references
+   are remapped to VenueMind brand values below.
+   ============================================================ */
+
+/* ── Google Font ─────────────────────────────────────────────
+   Add this to index.html <head> for faster load:
+   <link rel="preconnect" href="https://fonts.googleapis.com">
+   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&display=swap" rel="stylesheet">
+   ──────────────────────────────────────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&display=swap');
+
+:root {
+  /* ── Existing variable names — remapped to VenueMind brand ── */
+
+  /* Backgrounds */
+  --color-background-primary:    #FFFFFF;    /* Cards, raised surfaces */
+  --color-background-secondary:  #EBF2F5;    /* Header bg, role switcher, grouped controls */
+  --color-background-tertiary:   #F4F6F9;    /* Page / content area background */
+
+  /* Text */
+  --color-text-primary:          #002137;    /* Primary navy — headings, body */
+  --color-text-secondary:        #707C84;    /* Secondary grey — metadata, labels */
+  --color-text-tertiary:         #B0BEC5;    /* Placeholder, disabled */
+
+  /* Borders */
+  --color-border-primary:        #D4E0E6;    /* Strong borders — header, modal edges */
+  --color-border-secondary:      #E2E6ED;    /* Standard borders — cards, inputs */
+  --color-border-tertiary:       #EBF2F5;    /* Subtle borders — dividers, row separators */
+
+  /* Shared radius */
+  --border-radius-md:            8px;
+  --border-radius-lg:            12px;
+
+  /* Font */
+  --font-sans: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+
+  /* ── VenueMind brand tokens (use in new components) ───────── */
+  --vm-color-primary:       #002137;
+  --vm-color-accent:        #00A9CE;
+  --vm-color-secondary:     #707C84;
+  --vm-color-header-bg:     #EBF2F5;
+  --vm-color-surface:       #F4F6F9;
+  --vm-color-raised:        #FFFFFF;
+  --vm-color-border:        #E2E6ED;
+  --vm-color-header-border: #D4E0E6;
+
+  /* Semantic status */
+  --vm-color-success:       #0D7A4E;
+  --vm-color-success-light: #E6F4EE;
+  --vm-color-warning:       #A05A00;
+  --vm-color-warning-light: #FFF4E0;
+  --vm-color-error:         #C0392B;
+  --vm-color-error-light:   #FDECEA;
+
+  /* Slot types — allocation builder */
+  --vm-color-contracted:    #002137;
+  --vm-color-contracted-bg: #E0E8ED;
+  --vm-color-bonus:         #00A9CE;
+  --vm-color-bonus-bg:      #E0F5FA;
+  --vm-color-spare:         #B0BEC5;
+  --vm-color-spare-bg:      #F4F6F9;
+
+  /* Shadows */
+  --vm-shadow-xs: 0 1px 2px rgba(0,33,55,0.06);
+  --vm-shadow-sm: 0 2px 6px rgba(0,33,55,0.08);
+  --vm-shadow-md: 0 4px 16px rgba(0,33,55,0.10);
+}
+
+/* ── Base reset ──────────────────────────────────────────────── */
+*, *::before, *::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family:              var(--font-sans);
+  background:               var(--color-background-tertiary);
+  color:                    var(--color-text-primary);
+  line-height:              1.55;
+  -webkit-font-smoothing:   antialiased;
+  -moz-osx-font-smoothing:  grayscale;
+}
+
+#root {
+  max-width:  100%;         /* was 760px — too narrow for allocation builder matrix */
+  margin:     0 auto;
+  background: var(--color-background-tertiary);
+  min-height: 100vh;
+}
+
+/* ── Form elements ───────────────────────────────────────────── */
+input[type="text"],
+input[type="search"],
+input[type="email"],
+textarea,
+select {
+  font-family:   var(--font-sans);
+  font-size:     14px;
+  padding:       10px 12px;
+  border-radius: var(--border-radius-md);
+  border:        1px solid var(--color-border-secondary);
+  background:    var(--color-background-primary);
+  color:         var(--color-text-primary);
+  outline:       none;
+  transition:    border-color 0.15s;
+  width:         100%;
+}
+
+input[type="text"]:focus,
+input[type="search"]:focus,
+input[type="email"]:focus,
+textarea:focus,
+select:focus {
+  border-color: var(--vm-color-accent);
+  box-shadow:   0 0 0 3px rgba(0,169,206,0.12);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--color-text-tertiary);
+}
+
+/* ── Buttons ─────────────────────────────────────────────────── */
+button {
+  font-family: var(--font-sans);
+  transition:  opacity 0.15s, background 0.15s, box-shadow 0.15s;
+  cursor:      pointer;
+}
+
+button:hover  { opacity: 0.9; }
+button:active { transform: scale(0.98); }
+
+/* ── Scrollbar ───────────────────────────────────────────────── */
+::-webkit-scrollbar         { width: 6px; height: 6px; }
+::-webkit-scrollbar-track   { background: var(--color-background-tertiary); }
+::-webkit-scrollbar-thumb   { background: var(--color-border-secondary); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--color-text-tertiary); }
