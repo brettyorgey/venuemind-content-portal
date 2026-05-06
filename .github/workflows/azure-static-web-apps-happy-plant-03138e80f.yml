@@ -63,9 +63,6 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     name: Deploy Function App
-    defaults:
-      run:
-        working-directory: portal-function
     steps:
       - uses: actions/checkout@v3
 
@@ -77,6 +74,7 @@ jobs:
           cache-dependency-path: portal-function/package-lock.json
 
       - name: Install dependencies
+        working-directory: portal-function
         run: npm ci
 
       - name: Deploy to Azure Functions
