@@ -2,7 +2,7 @@
   "name": "venuemind-portal-function",
   "version": "1.0.0",
   "description": "Anthropic API proxy for VenueMind Content Portal",
-  "main": "src/functions/anthropicProxy.js",
+  "main": "anthropicProxy.js",
   "scripts": {
     "start": "func start",
     "test": "echo \"No tests defined\""
