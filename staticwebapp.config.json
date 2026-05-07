@@ -1,6 +1,10 @@
 {
   "routes": [
     {
+      "route": "/api/*",
+      "allowedRoles": ["anonymous"]
+    },    
+    {
       "route": "/*",
       "serve": "/index.html",
       "statusCode": 200
@@ -8,7 +12,7 @@
   ],
   "navigationFallback": {
     "rewrite": "/index.html",
-    "exclude": ["/assets/*", "/icons.svg", "/favicon.svg"]
+    "exclude": ["/assets/*", "/icons.svg", "/favicon.svg", "/api/*"]
   },
   "mimeTypes": {
     ".json": "application/json",
