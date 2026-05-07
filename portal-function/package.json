@@ -2,7 +2,7 @@
   "name": "venuemind-portal-function",
   "version": "1.0.0",
   "description": "VenueMind Content Portal — Azure Function App",
-  "main": "*.js",
+  "main": "index.js",
   "scripts": {
     "start": "func start"
   },
