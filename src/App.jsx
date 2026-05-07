@@ -1,16 +1,15 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   BASE_PARTNERS,
   PARTNERS_DATA,
   INITIAL_CONTENT,
-  INITIAL_EVENTS,
-  INITIAL_ALLOCATIONS,
   INITIAL_CAMPAIGNS,
   SEPARATION_RULES,
   getMomentTypesForEvent,
   buildDefaultMoments,
   generatePopRecords,
 } from "./data/constants";
+import { api } from "./api";
 import { PartnerAvatar } from "./components/SharedComponents";
 import { PartnerDashboard, PartnerUpload, PartnerLibrary, PartnerDetail, PartnerPoP } from "./components/PartnerScreens";
 import { PartnerPoPChat } from "./components/PartnerPoPChat";
@@ -24,11 +23,6 @@ import Header from "./components/Header";
 const MOCK_POP = generatePopRecords();
 
 // ── CDP-030 seed data ─────────────────────────────────────────────────────────
-// AFL is fully defined from the Zone/SoP Architecture document.
-// Cricket and Concert are stubs — states to be configured via Templates screen.
-// AFL_STATES and ZONES in constants.js remain in place for the allocation builder.
-// This managed state layer sits above them and will replace them in a future sprint.
-
 const SEED_TEMPLATES = [
   {
     id: "afl_football",
@@ -36,7 +30,6 @@ const SEED_TEMPLATES = [
     sport: "AFL",
     status: "active",
     notes: "Full AFL game format",
-    // CDP-037 — Moment types available for AFL events
     momentTypes: [
       { id: 'goal',   label: 'Goal Replay',   icon: '⚽', defaultFormat: 'lwrap', notes: 'Triggered on every goal — highest frequency, highest value' },
       { id: 'mark',   label: 'Mark Replay',   icon: '🤚', defaultFormat: 'lwrap', notes: 'Triggered on spectacular marks' },
@@ -137,35 +130,59 @@ function App() {
   const [role,           setRole]           = useState("partner");
   const [screen,         setScreen]         = useState("p-dashboard");
   const [detailId,       setDetailId]       = useState(null);
+
+  // ── Gate 2: events and allocations now load from Cosmos via API ──────────────
+  // loadingData gates the UI until both collections are hydrated on first boot.
+  const [events,         setEvents]         = useState([]);
+  const [allocations,    setAllocations]    = useState([]);
+  const [loadingData,    setLoadingData]    = useState(true);
+  const [dataError,      setDataError]      = useState(null);
+
+  // ── Still on useState (Gate 2.5) ─────────────────────────────────────────────
   const [content,        setContent]        = useState(INITIAL_CONTENT);
-  const [events,         setEvents]         = useState(INITIAL_EVENTS);
-  const [allocations,    setAllocations]    = useState(INITIAL_ALLOCATIONS);
-  const [campaigns,      setCampaigns]      = useState(INITIAL_CAMPAIGNS); // CDP-035
-  // Runtime partners state — seeded from BASE_PARTNERS, extended by Add Partner
+  const [campaigns,      setCampaigns]      = useState(INITIAL_CAMPAIGNS);
   const [partners,       setPartners]       = useState(BASE_PARTNERS);
-  // CDP-010 — Separation rules live in App state, seeded from SEPARATION_RULES constant.
-  // Operators can add/edit/delete rules via the Rules Management screen (o-rules).
   const [rules,          setRules]          = useState(SEPARATION_RULES);
-  // CDP-030 — Event type templates and venue zones in managed state.
-  // AFL_STATES / ZONES in constants.js remain for the allocation builder until wired here.
   const [eventTemplates, setEventTemplates] = useState(SEED_TEMPLATES);
   const [venueZones,     setVenueZones]     = useState(SEED_ZONES);
 
   const partner = PARTNERS_DATA.maccas;
 
-  const navigate = (s, id) => {
-    setScreen(s);
-    if (id !== undefined) setDetailId(id);
-  };
+  // ── Boot: seed if empty, then load ───────────────────────────────────────────
+  // On first load: call seed (no-op if already seeded), then fetch both collections.
+  const bootData = useCallback(async () => {
+    try {
+      setLoadingData(true);
+      setDataError(null);
+
+      // Seed is idempotent — safe to call every boot. Returns immediately if already seeded.
+      await Promise.all([api.events.seed(), api.allocations.seed()]);
+
+      // Load both collections in parallel
+      const [eventsData, allocsData] = await Promise.all([
+        api.events.list(),
+        api.allocations.list(),
+      ]);
+
+      setEvents(eventsData);
+      setAllocations(allocsData);
+    } catch (err) {
+      console.error("Failed to load portal data:", err);
+      setDataError("Unable to load event data. Please refresh the page.");
+    } finally {
+      setLoadingData(false);
+    }
+  }, []);
+
+  useEffect(() => { bootData(); }, [bootData]);
 
   // ── Content handlers ──────────────────────────────────────────────────────
 
   const handleUpload = (item) => {
     setContent(prev => [{ ...item, id: Date.now(), reviewed: null }, ...prev]);
     if (item.allocationId) {
-      setAllocations(prev => prev.map(a =>
-        a.id === item.allocationId ? { ...a, status: "under_review" } : a
-      ));
+      const alloc = allocations.find(a => a.id === item.allocationId);
+      if (alloc) handleEditAllocation({ ...alloc, status: "under_review" });
     }
   };
 
@@ -175,19 +192,16 @@ function App() {
     ));
     const item = content.find(c => c.id === id);
     if (item?.allocationId) {
-      setAllocations(prev => prev.map(a =>
-        a.id === item.allocationId ? { ...a, status: "approved", contentItemId: id } : a
-      ));
+      const alloc = allocations.find(a => a.id === item.allocationId);
+      if (alloc) handleEditAllocation({ ...alloc, status: "approved", contentItemId: id });
     }
-    // Link approved content to the matching campaign pool piece (same partner + format)
-    // Only links to pieces that don't already have a contentId
     if (item?.partnerId) {
       setCampaigns(prev => prev.map(c => {
         if (c.partnerId !== item.partnerId) return c;
         const updatedPool = (c.contentPool ?? []).map(piece => {
-          if (piece.contentId) return piece; // already linked
-          if (piece.format !== item.format) return piece; // format mismatch
-          return { ...piece, contentId: id }; // link first matching unlinked piece
+          if (piece.contentId) return piece;
+          if (piece.format !== item.format) return piece;
+          return { ...piece, contentId: id };
         });
         return { ...c, contentPool: updatedPool };
       }));
@@ -200,9 +214,8 @@ function App() {
     ));
     const item = content.find(c => c.id === id);
     if (item?.allocationId) {
-      setAllocations(prev => prev.map(a =>
-        a.id === item.allocationId ? { ...a, status: "pending_content", contentItemId: null } : a
-      ));
+      const alloc = allocations.find(a => a.id === item.allocationId);
+      if (alloc) handleEditAllocation({ ...alloc, status: "pending_content", contentItemId: null });
     }
   };
 
@@ -212,9 +225,8 @@ function App() {
     ));
     const item = content.find(c => c.id === id);
     if (item?.allocationId) {
-      setAllocations(prev => prev.map(a =>
-        a.id === item.allocationId ? { ...a, status: "under_review", contentItemId: null } : a
-      ));
+      const alloc = allocations.find(a => a.id === item.allocationId);
+      if (alloc) handleEditAllocation({ ...alloc, status: "under_review", contentItemId: null });
     }
   };
 
@@ -222,23 +234,72 @@ function App() {
     setContent(prev => prev.filter(c => c.id !== id));
   };
 
-  // ── Event & allocation handlers ───────────────────────────────────────────
+  // ── Event handlers — async, API-first ────────────────────────────────────────
 
-  const handleAddEvent = (event) => {
-    // CDP-037 — initialise moments array from template moment types
+  const handleAddEvent = async (event) => {
     const moments = buildDefaultMoments(event.eventType);
-    setEvents(prev => [...prev, { ...event, moments }]);
+    const newEvent = { ...event, moments };
+    try {
+      const saved = await api.events.create(newEvent);
+      setEvents(prev => [...prev, saved]);
+    } catch (err) {
+      console.error("Failed to create event:", err);
+      // Optimistic fallback — keep local state consistent even if API fails
+      setEvents(prev => [...prev, { ...newEvent, venueId: "adelaideoval" }]);
+    }
   };
 
-  // CDP-037 — update moment assignments for a specific event
-  const handleUpdateEventMoments = (eventId, moments) => {
+  const handleEditEvent = async (updated) => {
+    // Optimistic update — apply immediately, sync in background
+    setEvents(prev => prev.map(e => e.id === updated.id ? { ...e, ...updated } : e));
+    try {
+      await api.events.update(updated.id, updated);
+    } catch (err) {
+      console.error("Failed to update event:", err);
+    }
+  };
+
+  const handleUpdateEventMoments = async (eventId, moments) => {
     setEvents(prev => prev.map(e => e.id === eventId ? { ...e, moments } : e));
+    try {
+      await api.events.update(eventId, { moments });
+    } catch (err) {
+      console.error("Failed to update event moments:", err);
+    }
   };
 
-  // Fix 4 — operator upload content on behalf of partner
-  const handleAddContent = (contentItem) => {
-    setContent(prev => [...prev, contentItem]);
+  // ── Allocation handlers — async, API-first ────────────────────────────────────
+
+  const handleAddAllocation = async (alloc) => {
+    try {
+      const saved = await api.allocations.create(alloc);
+      setAllocations(prev => [...prev, saved]);
+    } catch (err) {
+      console.error("Failed to create allocation:", err);
+      setAllocations(prev => [...prev, { ...alloc, venueId: "adelaideoval" }]);
+    }
   };
+
+  const handleEditAllocation = async (updated) => {
+    setAllocations(prev => prev.map(a => a.id === updated.id ? updated : a));
+    try {
+      await api.allocations.update(updated.id, updated);
+    } catch (err) {
+      console.error("Failed to update allocation:", err);
+    }
+  };
+
+  const handleDeleteAllocation = async (id) => {
+    setAllocations(prev => prev.filter(a => a.id !== id));
+    try {
+      await api.allocations.delete(id);
+    } catch (err) {
+      console.error("Failed to delete allocation:", err);
+    }
+  };
+
+  // ── Campaign handlers (unchanged — still useState) ────────────────────────────
+
   const handleAddCampaign = (campaign) => {
     setCampaigns(prev => [...prev, { ...campaign, id: `cmp-${Date.now()}`, createdAt: new Date().toISOString().split('T')[0], updatedAt: new Date().toISOString().split('T')[0] }]);
   };
@@ -251,35 +312,27 @@ function App() {
     setCampaigns(prev => prev.filter(c => c.id !== id));
   };
 
-  const handleAttachEventToCampaign = (campaignId, eventId) => {
-    // One campaign per event — clear the event from any other campaign first
+  const handleAttachEventToCampaign = async (campaignId, eventId) => {
     setCampaigns(prev => prev.map(c => {
       if (c.id === campaignId) {
         return { ...c, eventIds: [...new Set([...(c.eventIds ?? []), eventId])], updatedAt: new Date().toISOString().split('T')[0] };
       }
-      // Remove from any other campaign it may have been in
       if ((c.eventIds ?? []).includes(eventId)) {
         return { ...c, eventIds: c.eventIds.filter(id => id !== eventId), updatedAt: new Date().toISOString().split('T')[0] };
       }
       return c;
     }));
-    // Also stamp campaignId onto the event record itself
-    setEvents(prev => prev.map(e => e.id === eventId ? { ...e, campaignId } : e));
+    // Campaign attachment stamps onto the event record
+    await handleEditEvent({ id: eventId, campaignId });
   };
 
-  const handleDetachEventFromCampaign = (campaignId, eventId) => {
+  const handleDetachEventFromCampaign = async (campaignId, eventId) => {
     setCampaigns(prev => prev.map(c =>
       c.id === campaignId
         ? { ...c, eventIds: (c.eventIds ?? []).filter(id => id !== eventId), updatedAt: new Date().toISOString().split('T')[0] }
         : c
     ));
-    // Clear campaignId from the event
-    setEvents(prev => prev.map(e => e.id === eventId ? { ...e, campaignId: null } : e));
-  };
-
-  // Edit an existing event's metadata (name, date, eventType, venue, playlistName)
-  const handleEditEvent = (updated) => {
-    setEvents(prev => prev.map(e => e.id === updated.id ? { ...e, ...updated } : e));
+    await handleEditEvent({ id: eventId, campaignId: null });
   };
 
   const handleAddCampaignRule = (campaignId, rule) => {
@@ -314,27 +367,24 @@ function App() {
     ));
   };
 
-  const handleAddAllocation = (alloc) => {
-    setAllocations(prev => [...prev, alloc]);
+  const handleAddContent = (contentItem) => {
+    setContent(prev => [...prev, contentItem]);
   };
 
-  const handleEditAllocation = (updated) => {
-    setAllocations(prev => prev.map(a => a.id === updated.id ? updated : a));
-  };
+  // ── Event priority handlers ───────────────────────────────────────────────────
 
-  const handleDeleteAllocation = (id) => {
-    setAllocations(prev => prev.filter(a => a.id !== id));
-  };
-
-  // Updates the partnerPriority array on an event record.
-  const handleUpdateEventPriority = (eventId, priorityOrder) => {
+  const handleUpdateEventPriority = async (eventId, priorityOrder) => {
     setEvents(prev => prev.map(e =>
       e.id === eventId ? { ...e, partnerPriority: priorityOrder } : e
     ));
+    try {
+      await api.events.update(eventId, { partnerPriority: priorityOrder });
+    } catch (err) {
+      console.error("Failed to update event priority:", err);
+    }
   };
 
-  // Updates the zonePriority map on an event record for a specific zone.
-  const handleUpdateZonePriority = (eventId, zoneId, priorityOrder) => {
+  const handleUpdateZonePriority = async (eventId, zoneId, priorityOrder) => {
     setEvents(prev => prev.map(e => {
       if (e.id !== eventId) return e;
       const zonePriority = { ...(e.zonePriority ?? {}) };
@@ -345,67 +395,73 @@ function App() {
       }
       return { ...e, zonePriority };
     }));
+    // Read the updated zonePriority from state to persist
+    const event = events.find(e => e.id === eventId);
+    if (event) {
+      const zonePriority = { ...(event.zonePriority ?? {}) };
+      if (priorityOrder === null) delete zonePriority[zoneId];
+      else zonePriority[zoneId] = priorityOrder;
+      try {
+        await api.events.update(eventId, { zonePriority });
+      } catch (err) {
+        console.error("Failed to update zone priority:", err);
+      }
+    }
   };
 
-  // Adds a new partner to the runtime partners list.
+  // ── Partners handler (useState — Gate 2.5) ────────────────────────────────────
   const handleAddPartner = (newPartner) => {
     setPartners(prev => [...prev, newPartner]);
   };
 
-  // ── Rules handlers (CDP-010) ──────────────────────────────────────────────
-
+  // ── Rules handlers (useState — Gate 2.5) ─────────────────────────────────────
   const handleAddRule = (rule) => {
     setRules(prev => [...prev, { ...rule, id: `rule-${Date.now()}` }]);
   };
-
   const handleUpdateRule = (updated) => {
     setRules(prev => prev.map(r => r.id === updated.id ? updated : r));
   };
-
   const handleDeleteRule = (id) => {
     setRules(prev => prev.filter(r => r.id !== id));
   };
 
-  // ── Template & zone handlers (CDP-030) ───────────────────────────────────
-
+  // ── Template & zone handlers (useState — Gate 2.5) ───────────────────────────
   const handleAddTemplate = (t) => {
     setEventTemplates(prev => [...prev, { ...t, states: [] }]);
   };
-
   const handleEditTemplate = (t) => {
     setEventTemplates(prev => prev.map(x => x.id === t.id ? { ...x, ...t } : x));
   };
-
   const handleDeleteTemplate = (id) => {
     setEventTemplates(prev => prev.filter(x => x.id !== id));
   };
-
   const handleUpdateStates = (templateId, states) => {
     setEventTemplates(prev => prev.map(t => t.id === templateId ? { ...t, states } : t));
   };
-
   const handleUpdateMomentTypes = (templateId, momentTypes) => {
     setEventTemplates(prev => prev.map(t => t.id === templateId ? { ...t, momentTypes } : t));
   };
-
   const handleAddZone = (z) => {
     setVenueZones(prev => [...prev, z]);
   };
-
   const handleEditZone = (z) => {
     setVenueZones(prev => prev.map(x => x.id === z.id ? z : x));
   };
-
   const handleDeleteZone = (id) => {
     setVenueZones(prev => prev.filter(x => x.id !== id));
   };
 
-  // ── Role / nav ────────────────────────────────────────────────────────────
+  // ── Role / nav ────────────────────────────────────────────────────────────────
 
   const switchRole = (r) => {
     setRole(r);
     setScreen(r === "partner" ? "p-dashboard" : "o-dashboard");
     setDetailId(null);
+  };
+
+  const navigate = (s, id) => {
+    setScreen(s);
+    if (id !== undefined) setDetailId(id);
   };
 
   const detailItem = content.find(c => c.id === detailId);
@@ -440,7 +496,30 @@ function App() {
     return false;
   };
 
-  // ── Role switcher — rendered into Header actions slot ────────────────────
+  // ── Loading / error states ────────────────────────────────────────────────────
+
+  if (loadingData) {
+    return (
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", background: "var(--vm-color-surface)", flexDirection: "column", gap: 16 }}>
+        <div style={{ width: 40, height: 40, border: "3px solid var(--vm-color-border)", borderTopColor: "var(--vm-color-accent)", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+        <p style={{ color: "var(--vm-color-secondary)", fontSize: 14 }}>Loading portal data…</p>
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      </div>
+    );
+  }
+
+  if (dataError) {
+    return (
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", background: "var(--vm-color-surface)", flexDirection: "column", gap: 12 }}>
+        <p style={{ color: "#791F1F", fontSize: 15 }}>{dataError}</p>
+        <button onClick={bootData} style={{ padding: "8px 20px", background: "var(--vm-color-primary)", color: "#fff", border: "none", borderRadius: 8, cursor: "pointer", fontSize: 14 }}>
+          Retry
+        </button>
+      </div>
+    );
+  }
+
+  // ── Role switcher ─────────────────────────────────────────────────────────────
   const roleSwitcher = (
     <div style={{ display: "flex", gap: 3, background: "var(--color-border-secondary)", borderRadius: 8, padding: 3 }}>
       <button
@@ -462,7 +541,7 @@ function App() {
     </div>
   );
 
-  // ── User identity pill ────────────────────────────────────────────────────
+  // ── User identity pill ────────────────────────────────────────────────────────
   const userPill = (
     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
       {role === "partner"
@@ -478,13 +557,13 @@ function App() {
   return (
     <div style={{ display: "flex", flexDirection: "column", minHeight: "100vh", background: "var(--vm-color-surface)" }}>
 
-      {/* Brand header — sticky, full width */}
+      {/* Brand header */}
       <Header
         subProduct={role === "partner" ? "Content Portal" : "Operations"}
         actions={<div style={{ display: "flex", alignItems: "center", gap: 16 }}>{roleSwitcher}{userPill}</div>}
       />
 
-      {/* Content wrapper — constrained width, padding, sits below sticky header */}
+      {/* Content wrapper */}
       <div style={{ flex: 1, width: "100%", maxWidth: 1280, margin: "0 auto", padding: "28px 32px" }}>
 
       {/* Navigation */}

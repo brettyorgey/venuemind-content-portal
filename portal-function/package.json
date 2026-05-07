@@ -1,16 +1,16 @@
 {
   "name": "venuemind-portal-function",
   "version": "1.0.0",
-  "description": "Anthropic API proxy for VenueMind Content Portal",
+  "description": "VenueMind Content Portal — Azure Function App",
   "main": "anthropicProxy.js",
   "scripts": {
-    "start": "func start",
-    "test": "echo \"No tests defined\""
+    "start": "func start"
   },
   "dependencies": {
-    "@azure/functions": "^4.0.0"
+    "@azure/functions": "^4.0.0",
+    "@azure/cosmos": "^4.1.0"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=18.0.0"
   }
 }
