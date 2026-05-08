@@ -72,7 +72,7 @@ jobs:
         with:
           node-version: '22'
 
-- name: Install dependencies
+      - name: Install dependencies
         working-directory: portal-function
         run: npm install --omit=dev
 
