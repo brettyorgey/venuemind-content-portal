@@ -72,14 +72,20 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Install dependencies
+- name: Install dependencies
         working-directory: portal-function
         run: npm install --omit=dev
+
+      - name: Debug - list portal-function contents
+        run: ls -la portal-function/
 
       - name: Zip package for deployment
         run: |
           cd portal-function
           zip -r ../function-deploy.zip index.js anthropicProxy.js events.js allocations.js host.json package.json package-lock.json node_modules
+
+      - name: Debug - check zip contents
+        run: unzip -l function-deploy.zip | head -30
 
       - name: Deploy to Azure Functions
         uses: Azure/functions-action@v1
