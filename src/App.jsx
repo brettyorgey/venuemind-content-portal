@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback } from "react";
 import {
   BASE_PARTNERS,
   PARTNERS_DATA,
-  INITIAL_CONTENT,
   INITIAL_CAMPAIGNS,
   SEPARATION_RULES,
   getMomentTypesForEvent,
@@ -131,15 +130,15 @@ function App() {
   const [screen,         setScreen]         = useState("p-dashboard");
   const [detailId,       setDetailId]       = useState(null);
 
-  // ── Gate 2: events and allocations now load from Cosmos via API ──────────────
-  // loadingData gates the UI until both collections are hydrated on first boot.
+  // ── Gate 2: events, allocations, and content now load from Cosmos via API ────
+  // loadingData gates the UI until all three collections are hydrated on first boot.
   const [events,         setEvents]         = useState([]);
   const [allocations,    setAllocations]    = useState([]);
+  const [content,        setContent]        = useState([]);
   const [loadingData,    setLoadingData]    = useState(true);
   const [dataError,      setDataError]      = useState(null);
 
   // ── Still on useState (Gate 2.5) ─────────────────────────────────────────────
-  const [content,        setContent]        = useState(INITIAL_CONTENT);
   const [campaigns,      setCampaigns]      = useState(INITIAL_CAMPAIGNS);
   const [partners,       setPartners]       = useState(BASE_PARTNERS);
   const [rules,          setRules]          = useState(SEPARATION_RULES);
@@ -149,23 +148,29 @@ function App() {
   const partner = PARTNERS_DATA.maccas;
 
   // ── Boot: seed if empty, then load ───────────────────────────────────────────
-  // On first load: call seed (no-op if already seeded), then fetch both collections.
+  // On first load: call seed (no-op if already seeded), then fetch all collections.
   const bootData = useCallback(async () => {
     try {
       setLoadingData(true);
       setDataError(null);
 
       // Seed is idempotent — safe to call every boot. Returns immediately if already seeded.
-      await Promise.all([api.events.seed(), api.allocations.seed()]);
+      await Promise.all([
+        api.events.seed(),
+        api.allocations.seed(),
+        api.content.seed(),
+      ]);
 
-      // Load both collections in parallel
-      const [eventsData, allocsData] = await Promise.all([
+      // Load all three collections in parallel
+      const [eventsData, allocsData, contentData] = await Promise.all([
         api.events.list(),
         api.allocations.list(),
+        api.content.list(),
       ]);
 
       setEvents(eventsData);
       setAllocations(allocsData);
+      setContent(contentData);
     } catch (err) {
       console.error("Failed to load portal data:", err);
       setDataError("Unable to load event data. Please refresh the page.");
@@ -176,62 +181,113 @@ function App() {
 
   useEffect(() => { bootData(); }, [bootData]);
 
-  // ── Content handlers ──────────────────────────────────────────────────────
+  // ── Content handlers — async, API-first ───────────────────────────────────────
 
-  const handleUpload = (item) => {
-    setContent(prev => [{ ...item, id: Date.now(), reviewed: null }, ...prev]);
-    if (item.allocationId) {
-      const alloc = allocations.find(a => a.id === item.allocationId);
-      if (alloc) handleEditAllocation({ ...alloc, status: "under_review" });
+  const handleUpload = async (item) => {
+    try {
+      const saved = await api.content.create({
+        ...item,
+        reviewed: null,
+      });
+      setContent(prev => [saved, ...prev]);
+      // If upload is linked to an allocation, mark it under_review (sequential — Option A)
+      if (item.allocationId) {
+        const alloc = allocations.find(a => a.id === item.allocationId);
+        if (alloc) await handleEditAllocation({ ...alloc, status: "under_review" });
+      }
+    } catch (err) {
+      console.error("Failed to upload content:", err);
+      // Optimistic fallback — keep local state consistent even if API fails
+      setContent(prev => [{ ...item, id: `ctn-${Date.now()}`, reviewed: null }, ...prev]);
     }
   };
 
-  const handleApprove = (id) => {
-    setContent(prev => prev.map(c =>
-      c.id === id ? { ...c, status: "approved", reviewed: "2026-04-19", rejectReason: undefined } : c
-    ));
-    const item = content.find(c => c.id === id);
-    if (item?.allocationId) {
-      const alloc = allocations.find(a => a.id === item.allocationId);
-      if (alloc) handleEditAllocation({ ...alloc, status: "approved", contentItemId: id });
-    }
-    if (item?.partnerId) {
-      setCampaigns(prev => prev.map(c => {
-        if (c.partnerId !== item.partnerId) return c;
-        const updatedPool = (c.contentPool ?? []).map(piece => {
-          if (piece.contentId) return piece;
-          if (piece.format !== item.format) return piece;
-          return { ...piece, contentId: id };
-        });
-        return { ...c, contentPool: updatedPool };
-      }));
+  const handleApprove = async (id) => {
+    // Option A: content write first, allocation write second
+    const patch = { status: "approved", reviewed: new Date().toISOString().split("T")[0], rejectReason: null };
+
+    // Optimistic UI update
+    setContent(prev => prev.map(c => c.id === id ? { ...c, ...patch } : c));
+
+    try {
+      // 1. Persist content status
+      await api.content.update(id, patch);
+
+      // 2. Persist allocation status (sequential — only after content write resolves)
+      const item = content.find(c => c.id === id);
+      if (item?.allocationId) {
+        const alloc = allocations.find(a => a.id === item.allocationId);
+        if (alloc) await handleEditAllocation({ ...alloc, status: "approved", contentItemId: id });
+      }
+
+      // 3. Link approved content into campaign pool if applicable
+      if (item?.partnerId) {
+        setCampaigns(prev => prev.map(c => {
+          if (c.partnerId !== item.partnerId) return c;
+          const updatedPool = (c.contentPool ?? []).map(piece => {
+            if (piece.contentId) return piece;
+            if (piece.format !== item.format) return piece;
+            return { ...piece, contentId: id };
+          });
+          return { ...c, contentPool: updatedPool };
+        }));
+      }
+    } catch (err) {
+      console.error("Failed to approve content:", err);
     }
   };
 
-  const handleReject = (id, reason) => {
-    setContent(prev => prev.map(c =>
-      c.id === id ? { ...c, status: "rejected", reviewed: "2026-04-19", rejectReason: reason } : c
-    ));
-    const item = content.find(c => c.id === id);
-    if (item?.allocationId) {
-      const alloc = allocations.find(a => a.id === item.allocationId);
-      if (alloc) handleEditAllocation({ ...alloc, status: "pending_content", contentItemId: null });
+  const handleReject = async (id, reason) => {
+    // Option A: content write first, allocation write second
+    const patch = { status: "rejected", reviewed: new Date().toISOString().split("T")[0], rejectReason: reason };
+
+    // Optimistic UI update
+    setContent(prev => prev.map(c => c.id === id ? { ...c, ...patch } : c));
+
+    try {
+      // 1. Persist content status
+      await api.content.update(id, patch);
+
+      // 2. Persist allocation status (sequential)
+      const item = content.find(c => c.id === id);
+      if (item?.allocationId) {
+        const alloc = allocations.find(a => a.id === item.allocationId);
+        if (alloc) await handleEditAllocation({ ...alloc, status: "pending_content", contentItemId: null });
+      }
+    } catch (err) {
+      console.error("Failed to reject content:", err);
     }
   };
 
-  const handleRemoveFromRotation = (id) => {
-    setContent(prev => prev.map(c =>
-      c.id === id ? { ...c, status: "pending", reviewed: null } : c
-    ));
-    const item = content.find(c => c.id === id);
-    if (item?.allocationId) {
-      const alloc = allocations.find(a => a.id === item.allocationId);
-      if (alloc) handleEditAllocation({ ...alloc, status: "under_review", contentItemId: null });
+  const handleRemoveFromRotation = async (id) => {
+    const patch = { status: "pending", reviewed: null };
+
+    // Optimistic UI update
+    setContent(prev => prev.map(c => c.id === id ? { ...c, ...patch } : c));
+
+    try {
+      // 1. Persist content status
+      await api.content.update(id, patch);
+
+      // 2. Persist allocation status (sequential)
+      const item = content.find(c => c.id === id);
+      if (item?.allocationId) {
+        const alloc = allocations.find(a => a.id === item.allocationId);
+        if (alloc) await handleEditAllocation({ ...alloc, status: "under_review", contentItemId: null });
+      }
+    } catch (err) {
+      console.error("Failed to remove content from rotation:", err);
     }
   };
 
-  const handleDelete = (id) => {
+  const handleDelete = async (id) => {
+    // Optimistic UI update
     setContent(prev => prev.filter(c => c.id !== id));
+    try {
+      await api.content.delete(id);
+    } catch (err) {
+      console.error("Failed to delete content:", err);
+    }
   };
 
   // ── Event handlers — async, API-first ────────────────────────────────────────
@@ -244,13 +300,11 @@ function App() {
       setEvents(prev => [...prev, saved]);
     } catch (err) {
       console.error("Failed to create event:", err);
-      // Optimistic fallback — keep local state consistent even if API fails
       setEvents(prev => [...prev, { ...newEvent, venueId: "adelaideoval" }]);
     }
   };
 
   const handleEditEvent = async (updated) => {
-    // Optimistic update — apply immediately, sync in background
     setEvents(prev => prev.map(e => e.id === updated.id ? { ...e, ...updated } : e));
     try {
       await api.events.update(updated.id, updated);
@@ -322,7 +376,6 @@ function App() {
       }
       return c;
     }));
-    // Campaign attachment stamps onto the event record
     await handleEditEvent({ id: eventId, campaignId });
   };
 
@@ -367,8 +420,15 @@ function App() {
     ));
   };
 
-  const handleAddContent = (contentItem) => {
-    setContent(prev => [...prev, contentItem]);
+  // ── handleAddContent — used by OperatorEventSetup for direct operator uploads ─
+  const handleAddContent = async (contentItem) => {
+    try {
+      const saved = await api.content.create(contentItem);
+      setContent(prev => [...prev, saved]);
+    } catch (err) {
+      console.error("Failed to add content:", err);
+      setContent(prev => [...prev, contentItem]);
+    }
   };
 
   // ── Event priority handlers ───────────────────────────────────────────────────
@@ -395,7 +455,6 @@ function App() {
       }
       return { ...e, zonePriority };
     }));
-    // Read the updated zonePriority from state to persist
     const event = events.find(e => e.id === eventId);
     if (event) {
       const zonePriority = { ...(event.zonePriority ?? {}) };
