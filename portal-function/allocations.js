@@ -200,8 +200,11 @@ app.http("allocations", {
       // ── POST /api/allocations/seed ─────────────────────────────────────────
       if (method === "POST" && id === "seed") {
         try {
-          await container.item(SEED_SENTINEL_ID, VENUE_ID).read();
-          return json(200, { message: "Already seeded", seeded: false });
+          const { resource: sentinel } = await container.item(SEED_SENTINEL_ID, VENUE_ID).read();
+          if (sentinel) {
+            return json(200, { message: "Already seeded", seeded: false });
+          }
+          // resource undefined — not found, proceed with seeding
         } catch (e) {
           if (e.code !== 404 && e.statusCode !== 404) throw e; // handle both SDK v3 and v4 error shapes
         }
