@@ -140,7 +140,7 @@ app.http("events", {
           // Sentinel exists — already seeded, no-op
           return json(200, { message: "Already seeded", seeded: false });
         } catch (e) {
-          if (e.code !== 404) throw e;
+          if (e.code !== 404 && e.statusCode !== 404) throw e; // handle both SDK v3 and v4 error shapes
         }
 
         // Write all seed events

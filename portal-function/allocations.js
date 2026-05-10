@@ -203,7 +203,7 @@ app.http("allocations", {
           await container.item(SEED_SENTINEL_ID, VENUE_ID).read();
           return json(200, { message: "Already seeded", seeded: false });
         } catch (e) {
-          if (e.code !== 404) throw e;
+          if (e.code !== 404 && e.statusCode !== 404) throw e; // handle both SDK v3 and v4 error shapes
         }
 
         for (const alloc of SEED_ALLOCATIONS) {
