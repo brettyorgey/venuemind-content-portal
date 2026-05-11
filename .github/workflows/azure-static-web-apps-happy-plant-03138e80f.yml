@@ -71,7 +71,7 @@ jobs:
       - name: Zip package for deployment
         run: |
           cd portal-function
-          zip -r ../function-deploy.zip index.js anthropicProxy.js events.js allocations.js content.js host.json package.json package-lock.json node_modules
+          zip -r ../function-deploy.zip index.js anthropicProxy.js events.js allocations.js content.js partners.js templates.js zones.js host.json package.json package-lock.json node_modules
       - name: Debug - check zip contents
         run: unzip -l function-deploy.zip | head -30
       - name: Deploy to Azure Functions

@@ -51,4 +51,31 @@ export const api = {
     delete: (id)        => request("DELETE", `/content/${id}`),
     seed:   ()          => request("POST",   "/content/seed"),
   },
+
+  partners: {
+    list:   ()          => request("GET",    "/partners"),
+    get:    (id)        => request("GET",    `/partners/${id}`),
+    create: (item)      => request("POST",   "/partners", item),
+    update: (id, patch) => request("PATCH",  `/partners/${id}`, patch),
+    delete: (id)        => request("DELETE", `/partners/${id}`),
+    seed:   ()          => request("POST",   "/partners/seed"),
+  },
+
+  templates: {
+    list:   ()          => request("GET",    "/templates"),
+    get:    (id)        => request("GET",    `/templates/${id}`),
+    create: (item)      => request("POST",   "/templates", item),
+    update: (id, patch) => request("PATCH",  `/templates/${id}`, patch),
+    delete: (id)        => request("DELETE", `/templates/${id}`),
+    seed:   ()          => request("POST",   "/templates/seed"),
+  },
+
+  zones: {
+    list:   ()          => request("GET",    "/zones"),
+    get:    (id)        => request("GET",    `/zones/${id}`),
+    create: (item)      => request("POST",   "/zones", item),
+    update: (id, patch) => request("PATCH",  `/zones/${id}`, patch),
+    delete: (id)        => request("DELETE", `/zones/${id}`),
+    seed:   ()          => request("POST",   "/zones/seed"),
+  },
 };
