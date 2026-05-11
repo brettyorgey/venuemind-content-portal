@@ -1,8 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   PARTNERS_DATA,
-  INITIAL_CAMPAIGNS,
-  SEPARATION_RULES,
   getMomentTypesForEvent,
   buildDefaultMoments,
   generatePopRecords,
@@ -25,29 +23,27 @@ function App() {
   const [screen,         setScreen]         = useState("p-dashboard");
   const [detailId,       setDetailId]       = useState(null);
 
-  // ── Gate 2: all six collections now load from Cosmos via API ─────────────────
+  // ── Gate 2 complete: all eight collections load from Cosmos via API ───────────
   const [events,         setEvents]         = useState([]);
   const [allocations,    setAllocations]    = useState([]);
   const [content,        setContent]        = useState([]);
   const [partners,       setPartners]       = useState([]);
   const [eventTemplates, setEventTemplates] = useState([]);
   const [venueZones,     setVenueZones]     = useState([]);
+  const [campaigns,      setCampaigns]      = useState([]);
+  const [rules,          setRules]          = useState([]);
   const [loadingData,    setLoadingData]    = useState(true);
   const [dataError,      setDataError]      = useState(null);
 
-  // ── Still on useState (Gate 2.5) ─────────────────────────────────────────────
-  const [campaigns,      setCampaigns]      = useState(INITIAL_CAMPAIGNS);
-  const [rules,          setRules]          = useState(SEPARATION_RULES);
-
   const partner = PARTNERS_DATA.maccas;
 
-  // ── Boot: seed if empty, then load all six collections ───────────────────────
+  // ── Boot: seed if empty, then load all eight collections ─────────────────────
   const bootData = useCallback(async () => {
     try {
       setLoadingData(true);
       setDataError(null);
 
-      // All six seeds are idempotent — safe to call every boot
+      // All seeds are idempotent — safe to call every boot
       await Promise.all([
         api.events.seed(),
         api.allocations.seed(),
@@ -55,16 +51,20 @@ function App() {
         api.partners.seed(),
         api.templates.seed(),
         api.zones.seed(),
+        api.campaigns.seed(),
+        api.rules.seed(),
       ]);
 
-      // Load all six collections in parallel
-      const [eventsData, allocsData, contentData, partnersData, templatesData, zonesData] = await Promise.all([
+      // Load all eight collections in parallel
+      const [eventsData, allocsData, contentData, partnersData, templatesData, zonesData, campaignsData, rulesData] = await Promise.all([
         api.events.list(),
         api.allocations.list(),
         api.content.list(),
         api.partners.list(),
         api.templates.list(),
         api.zones.list(),
+        api.campaigns.list(),
+        api.rules.list(),
       ]);
 
       setEvents(eventsData);
@@ -73,6 +73,8 @@ function App() {
       setPartners(partnersData);
       setEventTemplates(templatesData);
       setVenueZones(zonesData);
+      setCampaigns(campaignsData);
+      setRules(rulesData);
     } catch (err) {
       console.error("Failed to load portal data:", err);
       setDataError("Unable to load event data. Please refresh the page.");
@@ -110,6 +112,8 @@ function App() {
         if (alloc) await handleEditAllocation({ ...alloc, status: "approved", contentItemId: id });
       }
       if (item?.partnerId) {
+        // Update content pool in any matching campaign — optimistic local update only
+        // (campaign contentPool is a display concern, not a critical write path)
         setCampaigns(prev => prev.map(c => {
           if (c.partnerId !== item.partnerId) return c;
           const updatedPool = (c.contentPool ?? []).map(piece => {
@@ -360,26 +364,55 @@ function App() {
     }
   };
 
-  // ── Campaign handlers (useState — Gate 2.5) ───────────────────────────────────
+  // ── Campaign handlers — async, API-first ──────────────────────────────────────
 
-  const handleAddCampaign = (campaign) => {
-    setCampaigns(prev => [...prev, { ...campaign, id: `cmp-${Date.now()}`, createdAt: new Date().toISOString().split('T')[0], updatedAt: new Date().toISOString().split('T')[0] }]);
+  const handleAddCampaign = async (campaign) => {
+    const now = new Date().toISOString().split('T')[0];
+    const doc = { ...campaign, id: campaign.id || `cmp-${Date.now()}`, createdAt: now, updatedAt: now };
+    try {
+      const saved = await api.campaigns.create(doc);
+      setCampaigns(prev => [...prev, saved]);
+    } catch (err) {
+      console.error("Failed to add campaign:", err);
+      setCampaigns(prev => [...prev, doc]);
+    }
   };
 
-  const handleUpdateCampaign = (updated) => {
-    setCampaigns(prev => prev.map(c => c.id === updated.id ? { ...updated, updatedAt: new Date().toISOString().split('T')[0] } : c));
+  const handleUpdateCampaign = async (updated) => {
+    const patch = { ...updated, updatedAt: new Date().toISOString().split('T')[0] };
+    setCampaigns(prev => prev.map(c => c.id === updated.id ? patch : c));
+    try {
+      await api.campaigns.update(updated.id, patch);
+    } catch (err) {
+      console.error("Failed to update campaign:", err);
+    }
   };
 
-  const handleDeleteCampaign = (id) => {
+  const handleDeleteCampaign = async (id) => {
     setCampaigns(prev => prev.filter(c => c.id !== id));
+    try {
+      await api.campaigns.delete(id);
+    } catch (err) {
+      console.error("Failed to delete campaign:", err);
+    }
   };
 
   const handleAttachEventToCampaign = async (campaignId, eventId) => {
+    // Optimistic update — remove event from any other campaign, add to this one
     setCampaigns(prev => prev.map(c => {
       if (c.id === campaignId) return { ...c, eventIds: [...new Set([...(c.eventIds ?? []), eventId])], updatedAt: new Date().toISOString().split('T')[0] };
       if ((c.eventIds ?? []).includes(eventId)) return { ...c, eventIds: c.eventIds.filter(id => id !== eventId), updatedAt: new Date().toISOString().split('T')[0] };
       return c;
     }));
+    try {
+      const campaign = campaigns.find(c => c.id === campaignId);
+      if (campaign) {
+        const eventIds = [...new Set([...(campaign.eventIds ?? []), eventId])];
+        await api.campaigns.update(campaignId, { eventIds });
+      }
+    } catch (err) {
+      console.error("Failed to attach event to campaign:", err);
+    }
     await handleEditEvent({ id: eventId, campaignId });
   };
 
@@ -389,49 +422,96 @@ function App() {
         ? { ...c, eventIds: (c.eventIds ?? []).filter(id => id !== eventId), updatedAt: new Date().toISOString().split('T')[0] }
         : c
     ));
+    try {
+      const campaign = campaigns.find(c => c.id === campaignId);
+      if (campaign) {
+        const eventIds = (campaign.eventIds ?? []).filter(id => id !== eventId);
+        await api.campaigns.update(campaignId, { eventIds });
+      }
+    } catch (err) {
+      console.error("Failed to detach event from campaign:", err);
+    }
     await handleEditEvent({ id: eventId, campaignId: null });
   };
 
-  const handleAddCampaignRule = (campaignId, rule) => {
-    setCampaigns(prev => prev.map(c =>
-      c.id === campaignId
-        ? { ...c, rules: [...(c.rules ?? []), { ...rule, id: `rule-${Date.now()}` }], updatedAt: new Date().toISOString().split('T')[0] }
-        : c
-    ));
+  // Campaign rules are embedded in the campaign document — update via campaign PATCH
+  const handleAddCampaignRule = async (campaignId, rule) => {
+    const campaign = campaigns.find(c => c.id === campaignId);
+    if (!campaign) return;
+    const newRule  = { ...rule, id: `rule-${Date.now()}` };
+    const updated  = { ...campaign, rules: [...(campaign.rules ?? []), newRule], updatedAt: new Date().toISOString().split('T')[0] };
+    setCampaigns(prev => prev.map(c => c.id === campaignId ? updated : c));
+    try {
+      await api.campaigns.update(campaignId, { rules: updated.rules });
+    } catch (err) {
+      console.error("Failed to add campaign rule:", err);
+    }
   };
 
-  const handleUpdateCampaignRule = (campaignId, updatedRule) => {
-    setCampaigns(prev => prev.map(c =>
-      c.id === campaignId
-        ? { ...c, rules: (c.rules ?? []).map(r => r.id === updatedRule.id ? updatedRule : r), updatedAt: new Date().toISOString().split('T')[0] }
-        : c
-    ));
+  const handleUpdateCampaignRule = async (campaignId, updatedRule) => {
+    const campaign = campaigns.find(c => c.id === campaignId);
+    if (!campaign) return;
+    const rules   = (campaign.rules ?? []).map(r => r.id === updatedRule.id ? updatedRule : r);
+    setCampaigns(prev => prev.map(c => c.id === campaignId ? { ...c, rules, updatedAt: new Date().toISOString().split('T')[0] } : c));
+    try {
+      await api.campaigns.update(campaignId, { rules });
+    } catch (err) {
+      console.error("Failed to update campaign rule:", err);
+    }
   };
 
-  const handleDeleteCampaignRule = (campaignId, ruleId) => {
-    setCampaigns(prev => prev.map(c =>
-      c.id === campaignId
-        ? { ...c, rules: (c.rules ?? []).filter(r => r.id !== ruleId), updatedAt: new Date().toISOString().split('T')[0] }
-        : c
-    ));
+  const handleDeleteCampaignRule = async (campaignId, ruleId) => {
+    const campaign = campaigns.find(c => c.id === campaignId);
+    if (!campaign) return;
+    const rules   = (campaign.rules ?? []).filter(r => r.id !== ruleId);
+    setCampaigns(prev => prev.map(c => c.id === campaignId ? { ...c, rules, updatedAt: new Date().toISOString().split('T')[0] } : c));
+    try {
+      await api.campaigns.update(campaignId, { rules });
+    } catch (err) {
+      console.error("Failed to delete campaign rule:", err);
+    }
   };
 
-  const handleUpdateCampaignPool = (campaignId, contentPool) => {
+  const handleUpdateCampaignPool = async (campaignId, contentPool) => {
     setCampaigns(prev => prev.map(c =>
       c.id === campaignId ? { ...c, contentPool, updatedAt: new Date().toISOString().split('T')[0] } : c
     ));
+    try {
+      await api.campaigns.update(campaignId, { contentPool });
+    } catch (err) {
+      console.error("Failed to update campaign pool:", err);
+    }
   };
 
-  // ── Rules handlers (useState — Gate 2.5) ─────────────────────────────────────
+  // ── Separation rules handlers — async, API-first ──────────────────────────────
 
-  const handleAddRule = (rule) => {
-    setRules(prev => [...prev, { ...rule, id: `rule-${Date.now()}` }]);
+  const handleAddRule = async (rule) => {
+    const doc = { ...rule, id: rule.id || `rule-${Date.now()}` };
+    try {
+      const saved = await api.rules.create(doc);
+      setRules(prev => [...prev, saved]);
+    } catch (err) {
+      console.error("Failed to add rule:", err);
+      setRules(prev => [...prev, doc]);
+    }
   };
-  const handleUpdateRule = (updated) => {
+
+  const handleUpdateRule = async (updated) => {
     setRules(prev => prev.map(r => r.id === updated.id ? updated : r));
+    try {
+      await api.rules.update(updated.id, updated);
+    } catch (err) {
+      console.error("Failed to update rule:", err);
+    }
   };
-  const handleDeleteRule = (id) => {
+
+  const handleDeleteRule = async (id) => {
     setRules(prev => prev.filter(r => r.id !== id));
+    try {
+      await api.rules.delete(id);
+    } catch (err) {
+      console.error("Failed to delete rule:", err);
+    }
   };
 
   // ── Role / nav ────────────────────────────────────────────────────────────────
@@ -505,22 +585,16 @@ function App() {
   // ── Role switcher ─────────────────────────────────────────────────────────────
   const roleSwitcher = (
     <div style={{ display: "flex", gap: 3, background: "var(--color-border-secondary)", borderRadius: 8, padding: 3 }}>
-      <button
-        onClick={() => switchRole("partner")}
-        style={{ padding: "5px 14px", borderRadius: 6, fontSize: 12, fontWeight: 500, cursor: "pointer", border: "none",
-          background: role === "partner" ? "var(--color-background-primary)" : "transparent",
-          color: role === "partner" ? "var(--vm-color-primary)" : "var(--color-text-secondary)",
-          boxShadow: role === "partner" ? "0 1px 3px rgba(0,33,55,0.10)" : "none",
-        }}
-      >Partner view</button>
-      <button
-        onClick={() => switchRole("operator")}
-        style={{ padding: "5px 14px", borderRadius: 6, fontSize: 12, fontWeight: 500, cursor: "pointer", border: "none",
-          background: role === "operator" ? "var(--color-background-primary)" : "transparent",
-          color: role === "operator" ? "var(--vm-color-primary)" : "var(--color-text-secondary)",
-          boxShadow: role === "operator" ? "0 1px 3px rgba(0,33,55,0.10)" : "none",
-        }}
-      >Operator view</button>
+      <button onClick={() => switchRole("partner")} style={{ padding: "5px 14px", borderRadius: 6, fontSize: 12, fontWeight: 500, cursor: "pointer", border: "none",
+        background: role === "partner" ? "var(--color-background-primary)" : "transparent",
+        color: role === "partner" ? "var(--vm-color-primary)" : "var(--color-text-secondary)",
+        boxShadow: role === "partner" ? "0 1px 3px rgba(0,33,55,0.10)" : "none",
+      }}>Partner view</button>
+      <button onClick={() => switchRole("operator")} style={{ padding: "5px 14px", borderRadius: 6, fontSize: 12, fontWeight: 500, cursor: "pointer", border: "none",
+        background: role === "operator" ? "var(--color-background-primary)" : "transparent",
+        color: role === "operator" ? "var(--vm-color-primary)" : "var(--color-text-secondary)",
+        boxShadow: role === "operator" ? "0 1px 3px rgba(0,33,55,0.10)" : "none",
+      }}>Operator view</button>
     </div>
   );
 
@@ -554,9 +628,7 @@ function App() {
             background: isActiveNav(n.key) ? "var(--vm-color-primary)" : "transparent",
             color: isActiveNav(n.key) ? "#fff" : "var(--color-text-secondary)",
             border: "none",
-          }}>
-            {n.label}
-          </button>
+          }}>{n.label}</button>
         ))}
       </div>
 
@@ -591,16 +663,10 @@ function App() {
       )}
       {screen === "o-templates" && (
         <OperatorTemplates
-          templates={eventTemplates}
-          zones={venueZones}
-          onAddTemplate={handleAddTemplate}
-          onEditTemplate={handleEditTemplate}
-          onDeleteTemplate={handleDeleteTemplate}
-          onUpdateStates={handleUpdateStates}
-          onUpdateMomentTypes={handleUpdateMomentTypes}
-          onAddZone={handleAddZone}
-          onEditZone={handleEditZone}
-          onDeleteZone={handleDeleteZone}
+          templates={eventTemplates} zones={venueZones}
+          onAddTemplate={handleAddTemplate} onEditTemplate={handleEditTemplate} onDeleteTemplate={handleDeleteTemplate}
+          onUpdateStates={handleUpdateStates} onUpdateMomentTypes={handleUpdateMomentTypes}
+          onAddZone={handleAddZone} onEditZone={handleEditZone} onDeleteZone={handleDeleteZone}
         />
       )}
       {screen === "o-briefs" && (

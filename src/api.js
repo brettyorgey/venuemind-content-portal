@@ -78,4 +78,22 @@ export const api = {
     delete: (id)        => request("DELETE", `/zones/${id}`),
     seed:   ()          => request("POST",   "/zones/seed"),
   },
+
+  campaigns: {
+    list:   ()          => request("GET",    "/campaigns"),
+    get:    (id)        => request("GET",    `/campaigns/${id}`),
+    create: (item)      => request("POST",   "/campaigns", item),
+    update: (id, patch) => request("PATCH",  `/campaigns/${id}`, patch),
+    delete: (id)        => request("DELETE", `/campaigns/${id}`),
+    seed:   ()          => request("POST",   "/campaigns/seed"),
+  },
+
+  rules: {
+    list:   ()          => request("GET",    "/rules"),
+    get:    (id)        => request("GET",    `/rules/${id}`),
+    create: (item)      => request("POST",   "/rules", item),
+    update: (id, patch) => request("PATCH",  `/rules/${id}`, patch),
+    delete: (id)        => request("DELETE", `/rules/${id}`),
+    seed:   ()          => request("POST",   "/rules/seed"),
+  },
 };

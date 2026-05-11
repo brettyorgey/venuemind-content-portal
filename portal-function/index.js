@@ -6,4 +6,6 @@ require("./content");
 require("./partners");
 require("./templates");
 require("./zones");
+require("./campaigns");
+require("./rules");
 require("./anthropicProxy");
