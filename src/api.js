@@ -23,7 +23,6 @@ async function request(method, path, body) {
   return res.json();
 }
 
-// ── Events ────────────────────────────────────────────────────────────────────
 export const api = {
   events: {
     list:   ()          => request("GET",    "/events"),
@@ -42,5 +41,14 @@ export const api = {
     update:      (id, patch) => request("PATCH",  `/allocations/${id}`, patch),
     delete:      (id)        => request("DELETE", `/allocations/${id}`),
     seed:        ()          => request("POST",   "/allocations/seed"),
+  },
+
+  content: {
+    list:   ()          => request("GET",    "/content"),
+    get:    (id)        => request("GET",    `/content/${id}`),
+    create: (item)      => request("POST",   "/content", item),
+    update: (id, patch) => request("PATCH",  `/content/${id}`, patch),
+    delete: (id)        => request("DELETE", `/content/${id}`),
+    seed:   ()          => request("POST",   "/content/seed"),
   },
 };
