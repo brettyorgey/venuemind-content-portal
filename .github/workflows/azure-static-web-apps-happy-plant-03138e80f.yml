@@ -1,5 +1,4 @@
 name: VenueMind Content Portal — CI/CD
-
 on:
   push:
     branches:
@@ -8,7 +7,6 @@ on:
     types: [opened, synchronize, reopened, closed]
     branches:
       - main
-
 jobs:
   # ── Deploy Azure Static Web App ───────────────────────────────────────────────
   build_and_deploy_swa:
@@ -23,10 +21,8 @@ jobs:
         with:
           submodules: true
           lfs: false
-
       - name: Install OIDC Client from Core Package
         run: npm install @actions/core@1.6.0 @actions/http-client
-
       - name: Get Id Token
         uses: actions/github-script@v6
         id: idtoken
@@ -35,7 +31,6 @@ jobs:
             const coredemo = require('@actions/core')
             return await coredemo.getIDToken()
           result-encoding: string
-
       - name: Build And Deploy
         id: builddeploy
         uses: Azure/static-web-apps-deploy@v1
@@ -47,7 +42,6 @@ jobs:
           output_location: "dist"
           app_build_command: "npm run build"
           github_id_token: ${{ steps.idtoken.outputs.result }}
-
   close_pull_request_job:
     if: github.event_name == 'pull_request' && github.event.action == 'closed'
     runs-on: ubuntu-latest
@@ -58,35 +52,28 @@ jobs:
         uses: Azure/static-web-apps-deploy@v1
         with:
           action: "close"
-
-  # ── Deploy Azure Function App (Anthropic Proxy) ───────────────────────────────
+  # ── Deploy Azure Function App ─────────────────────────────────────────────────
   deploy_function:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     name: Deploy Function App
     steps:
       - uses: actions/checkout@v3
-
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
           node-version: '22'
-
       - name: Install dependencies
         working-directory: portal-function
         run: npm install --omit=dev
-
       - name: Debug - list portal-function contents
         run: ls -la portal-function/
-
       - name: Zip package for deployment
         run: |
           cd portal-function
-          zip -r ../function-deploy.zip index.js anthropicProxy.js events.js allocations.js host.json package.json package-lock.json node_modules
-
+          zip -r ../function-deploy.zip index.js anthropicProxy.js events.js allocations.js content.js host.json package.json package-lock.json node_modules
       - name: Debug - check zip contents
         run: unzip -l function-deploy.zip | head -30
-
       - name: Deploy to Azure Functions
         uses: Azure/functions-action@v1
         with:
