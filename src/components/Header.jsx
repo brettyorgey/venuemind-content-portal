@@ -23,29 +23,34 @@ const HexMark = () => (
     aria-hidden="true"
     style={{ flexShrink: 0 }}
   >
-    {/* Hex body */}
+    {/* Hex outline */}
     <path
       d="M14 2L26 9V23L14 30L2 23V9L14 2Z"
-      fill="#EBF2F5"
-      stroke="#002137"
+      fill="none"
+      stroke="#102a43"
       strokeWidth="1.5"
+      strokeLinejoin="round"
     />
-    {/* Node spokes — 6 directions */}
-    <line x1="14" y1="16" x2="14" y2="6"  stroke="#002137" strokeWidth="1.5" strokeOpacity="0.4" strokeLinecap="round" />
-    <line x1="14" y1="16" x2="14" y2="26" stroke="#002137" strokeWidth="1.5" strokeOpacity="0.4" strokeLinecap="round" />
-    <line x1="14" y1="16" x2="22" y2="11" stroke="#002137" strokeWidth="1.5" strokeOpacity="0.4" strokeLinecap="round" />
-    <line x1="14" y1="16" x2="6"  y2="11" stroke="#002137" strokeWidth="1.5" strokeOpacity="0.4" strokeLinecap="round" />
-    <line x1="14" y1="16" x2="22" y2="21" stroke="#002137" strokeWidth="1.5" strokeOpacity="0.4" strokeLinecap="round" />
-    <line x1="14" y1="16" x2="6"  y2="21" stroke="#00A9CE" strokeWidth="2"   strokeLinecap="round" />
+    {/* Node spokes — all six unified blue */}
+    <g stroke="#00a4d3" strokeWidth="1.3" strokeLinecap="round">
+      <line x1="14" y1="16" x2="14" y2="4"/>
+      <line x1="14" y1="16" x2="14" y2="28"/>
+      <line x1="14" y1="16" x2="23" y2="10.5"/>
+      <line x1="14" y1="16" x2="5"  y2="10.5"/>
+      <line x1="14" y1="16" x2="23" y2="21.5"/>
+      <line x1="14" y1="16" x2="5"  y2="21.5"/>
+    </g>
+    {/* Outer nodes — all six unified blue */}
+    <g fill="#00a4d3">
+      <circle cx="14" cy="4"    r="1.6"/>
+      <circle cx="14" cy="28"   r="1.6"/>
+      <circle cx="23" cy="10.5" r="1.6"/>
+      <circle cx="5"  cy="10.5" r="1.6"/>
+      <circle cx="23" cy="21.5" r="1.6"/>
+      <circle cx="5"  cy="21.5" r="1.6"/>
+    </g>
     {/* Centre dot */}
-    <circle cx="14" cy="16" r="2.5" fill="#00A9CE" />
-    {/* Node dots */}
-    <circle cx="14" cy="6"  r="1.5" fill="#002137" fillOpacity="0.4" />
-    <circle cx="14" cy="26" r="1.5" fill="#002137" fillOpacity="0.4" />
-    <circle cx="22" cy="11" r="1.5" fill="#002137" fillOpacity="0.4" />
-    <circle cx="6"  cy="11" r="1.5" fill="#002137" fillOpacity="0.4" />
-    <circle cx="22" cy="21" r="1.5" fill="#002137" fillOpacity="0.4" />
-    <circle cx="6"  cy="21" r="1.5" fill="#00A9CE" />
+    <circle cx="14" cy="16" r="3" fill="#00a4d3"/>
   </svg>
 );
 
