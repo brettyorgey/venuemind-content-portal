@@ -1005,12 +1005,6 @@ export function OperatorRules({ rules, partners, onAddRule, onUpdateRule, onDele
         )}
       </div>
 
-      {/* Placeholder notice */}
-      {partners.some(p => p.placeholder) && (
-        <div style={{ fontSize: 12, padding: '8px 12px', borderRadius: 6, background: '#FEF9C3', border: '1px solid #FDE68A', color: '#92400E', marginBottom: 16 }}>
-        </div>
-      )}
-
       {/* Add rule form */}
       {showAdd && (
         <div style={S.formWrap}>
