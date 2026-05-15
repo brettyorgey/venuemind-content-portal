@@ -622,7 +622,6 @@ function EditEventForm({ event, onSave, onClose }) {
   const [date,         setDate]         = useState(event.date ?? '');
   const [eventType,    setEventType]    = useState(event.eventType ?? 'afl');
   const [venue,        setVenue]        = useState(event.venue ?? '');
-  const [playlistName, setPlaylistName] = useState(event.playlistName ?? '');
 
   const namePlaceholders = {
     afl: 'e.g. AFL — Port Adelaide vs Richmond', function: 'e.g. Disney+ Executive Function',
@@ -651,15 +650,12 @@ function EditEventForm({ event, onSave, onClose }) {
         <label style={{ ...sectionTitle, display: 'block' }}>Venue</label>
         <input style={input} value={venue} onChange={e => setVenue(e.target.value)} />
       </div>
-      <div>
-        <label style={{ ...sectionTitle, display: 'block' }}>Playlist name <span style={{ fontWeight: 400, textTransform: 'none', fontSize: 11 }}>(sent to media player)</span></label>
-        <input style={input} value={playlistName} onChange={e => setPlaylistName(e.target.value)} placeholder={name || 'Defaults to event name'} />
-      </div>
+
       <div style={{ display: 'flex', gap: 10 }}>
         <button
           style={{ ...btn('primary'), flex: 1, opacity: name.trim() && date ? 1 : 0.4 }}
           disabled={!name.trim() || !date}
-          onClick={() => onSave({ ...event, name: name.trim(), date, eventType, venue: venue.trim(), playlistName: (playlistName.trim() || name.trim()) })}
+          onClick={() => onSave({ ...event, name: name.trim(), date, eventType, venue: venue.trim() })}
         >
           Save changes
         </button>
@@ -677,9 +673,9 @@ function EventDetail({ event, allocations, partners, campaigns = [], eventTempla
   const [showEditEvent, setShowEditEvent] = useState(false); // edit event metadata
 
   const eventAllocs      = getAllocationsForEvent(allocations, event.id);
-  const attachedCampaign = campaigns.find(c => (c.eventIds ?? []).includes(event.id)) ?? null;
-  const coveredTypes     = new Set((attachedCampaign?.rules ?? []).map(r => r.eventTypeId));
-  const eventTypeCovered = attachedCampaign ? coveredTypes.has(event.eventType) : false;
+  // Many-to-many: an event can belong to multiple partner campaigns simultaneously.
+  const attachedCampaigns = campaigns.filter(c => (c.eventIds ?? []).includes(event.id));
+  const attachedCampaign  = attachedCampaigns[0] ?? null; // kept for backward compat with header badge
   const allPartners = partners.length > 0 ? partners : BASE_PARTNERS;
   const partnerMap  = Object.fromEntries(allPartners.map(p => [p.id, p]));
 
@@ -752,17 +748,13 @@ function EventDetail({ event, allocations, partners, campaigns = [], eventTempla
           )}
         </div>
         <div style={{ display: 'flex', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
-          {event.playlistName && (
-            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '3px 10px', borderRadius: 5, background: '#EEF2FF', border: '1px solid #C7D2FE' }}>
-              <span style={{ fontSize: 10, fontWeight: 700, color: '#6366F1', textTransform: 'uppercase', letterSpacing: '.04em' }}>Playlist</span>
-              <span style={{ fontSize: 12, color: '#3730A3', fontWeight: 500 }}>{event.playlistName}</span>
-            </div>
-          )}
-          {attachedCampaign && (
+
+          {attachedCampaigns.length > 0 && (
             <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '3px 10px', borderRadius: 5, background: '#DCFCE7', border: '1px solid #BBF7D0' }}>
               <span style={{ fontSize: 10, fontWeight: 700, color: '#166534', textTransform: 'uppercase', letterSpacing: '.04em' }}>Campaign</span>
-              <span style={{ fontSize: 12, color: '#166534', fontWeight: 500 }}>{attachedCampaign.name}</span>
-              {!eventTypeCovered && <span style={{ fontSize: 10, color: '#92400E', fontWeight: 700 }}>⚠ No rule</span>}
+              <span style={{ fontSize: 12, color: '#166534', fontWeight: 500 }}>
+                {attachedCampaigns.length === 1 ? attachedCampaigns[0].name : `${attachedCampaigns.length} campaigns`}
+              </span>
             </div>
           )}
         </div>
@@ -1032,74 +1024,79 @@ function EventDetail({ event, allocations, partners, campaigns = [], eventTempla
         </>
       )}
 
-      {/* Campaign tab */}
+      {/* Campaign tab — many-to-many: an event can belong to multiple partner campaigns */}
       {activeTab === 'campaign' && (
         <div>
-          {/* Attached campaign */}
-          {attachedCampaign ? (
-            <div>
-              <div style={{ padding: '14px 16px', borderRadius: 10, background: '#F0FDF4', border: '1px solid #BBF7D0', marginBottom: 16 }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-                  <div>
-                    <div style={{ fontSize: 14, fontWeight: 600, color: '#166534', marginBottom: 2 }}>{attachedCampaign.name}</div>
-                    <div style={{ fontSize: 12, color: '#15803D' }}>
-                      {attachedCampaign.startDate} → {attachedCampaign.endDate} · {attachedCampaign.partnerId}
-                    </div>
-                    <div style={{ fontSize: 12, color: '#15803D', marginTop: 2 }}>
-                      {(attachedCampaign.eventIds ?? []).length} event{(attachedCampaign.eventIds ?? []).length !== 1 ? 's' : ''} attached · {(attachedCampaign.rules ?? []).length} rule{(attachedCampaign.rules ?? []).length !== 1 ? 's' : ''}
-                    </div>
-                  </div>
-                  {onDetachEventFromCampaign && (
-                    <button
-                      onClick={() => onDetachEventFromCampaign(attachedCampaign.id, event.id)}
-                      style={{ fontSize: 11, padding: '5px 12px', borderRadius: 6, border: '1px solid #86EFAC', background: '#fff', color: '#166534', cursor: 'pointer', fontWeight: 600, flexShrink: 0 }}
-                    >
-                      Detach
-                    </button>
-                  )}
-                </div>
-                {!eventTypeCovered && (
-                  <div style={{ marginTop: 10, padding: '8px 12px', borderRadius: 6, background: '#FEF9C3', border: '0.5px solid #FDE047', fontSize: 12, color: '#854D0E' }}>
-                    ⚠ This campaign has no rule covering <strong>{EVENT_TYPES.find(t => t.id === event.eventType)?.label ?? event.eventType}</strong> events. The allocation builder has no entitlement terms to apply. Add a rule in the Campaign screen.
-                  </div>
-                )}
+          {/* Attached campaigns */}
+          {attachedCampaigns.length > 0 && (
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
+                Attached campaigns ({attachedCampaigns.length})
               </div>
-
-              {/* Show relevant campaign rules */}
-              {(attachedCampaign.rules ?? []).filter(r => r.eventTypeId === event.eventType).length > 0 && (
-                <div style={{ marginBottom: 16 }}>
-                  <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>Applicable rules</div>
-                  {(attachedCampaign.rules ?? []).filter(r => r.eventTypeId === event.eventType).map(rule => (
-                    <div key={rule.id} style={{ padding: '10px 14px', borderRadius: 8, background: 'var(--color-background-secondary)', border: '0.5px solid var(--color-border-tertiary)', marginBottom: 6, fontSize: 12 }}>
-                      <div style={{ fontWeight: 600, color: 'var(--color-text-primary)', marginBottom: 2 }}>
-                        {rule.zoneId ? (ZONES.find(z => z.id === rule.zoneId)?.label ?? rule.zoneId) : 'All zones'} — {rule.entitlementType === 'percentage' ? `${rule.value}%` : rule.entitlementType === 'seconds' ? `${rule.value}s/hr` : `${rule.value} slots`}
+              {attachedCampaigns.map(c => {
+                const coveredTypes = new Set((c.rules ?? []).map(r => r.eventTypeId));
+                const typeCovered  = coveredTypes.has(event.eventType);
+                return (
+                  <div key={c.id} style={{ padding: '12px 14px', borderRadius: 10, background: '#F0FDF4', border: '1px solid #BBF7D0', marginBottom: 10 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 4 }}>
+                      <div>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: '#166534', marginBottom: 2 }}>{c.name}</div>
+                        <div style={{ fontSize: 11, color: '#15803D' }}>
+                          {c.startDate} → {c.endDate} · {(c.eventIds ?? []).length} event{(c.eventIds ?? []).length !== 1 ? 's' : ''} · {(c.rules ?? []).length} rule{(c.rules ?? []).length !== 1 ? 's' : ''}
+                        </div>
                       </div>
-                      {rule.notes && <div style={{ color: 'var(--color-text-secondary)' }}>{rule.notes}</div>}
+                      {onDetachEventFromCampaign && (
+                        <button onClick={() => onDetachEventFromCampaign(c.id, event.id)}
+                          style={{ fontSize: 11, padding: '4px 10px', borderRadius: 6, border: '1px solid #86EFAC', background: '#fff', color: '#166534', cursor: 'pointer', fontWeight: 600, flexShrink: 0 }}>
+                          Detach
+                        </button>
+                      )}
                     </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          ) : (
-            /* No campaign attached — show available campaigns */
-            <div>
-              <div style={{ padding: '10px 14px', borderRadius: 8, background: '#EEF2FF', border: '1px solid #C7D2FE', marginBottom: 16, fontSize: 12, color: '#3730A3' }}>
-                Attach this event to a campaign to apply partner entitlement rules. Only campaigns with a rule covering <strong>{EVENT_TYPES.find(t => t.id === event.eventType)?.label ?? event.eventType}</strong> events are shown.
-              </div>
-              {(() => {
-                const eligible = campaigns.filter(c =>
-                  c.status === 'active' &&
-                  (c.rules ?? []).some(r => r.eventTypeId === event.eventType)
+                    {!typeCovered && (
+                      <div style={{ marginTop: 8, padding: '7px 10px', borderRadius: 6, background: '#FEF9C3', border: '0.5px solid #FDE047', fontSize: 11, color: '#854D0E' }}>
+                        ⚠ No rule covers {EVENT_TYPES.find(t => t.id === event.eventType)?.label ?? event.eventType} events — add a rule in the Campaign screen.
+                      </div>
+                    )}
+                    {/* Applicable rules for this event type */}
+                    {(c.rules ?? []).filter(r => r.eventTypeId === event.eventType).map(rule => (
+                      <div key={rule.id} style={{ marginTop: 8, padding: '8px 10px', borderRadius: 6, background: 'rgba(0,0,0,.03)', fontSize: 11, color: 'var(--color-text-primary)' }}>
+                        <span style={{ fontWeight: 600 }}>
+                          {rule.zoneId ? (ZONES.find(z => z.id === rule.zoneId)?.label ?? rule.zoneId) : 'All zones'}
+                        </span>
+                        {' — '}
+                        {rule.entitlementType === 'percentage' ? `${rule.value}%` : rule.entitlementType === 'seconds' ? `${rule.value}s/hr` : `${rule.value} slots`}
+                        {rule.notes && <span style={{ color: 'var(--color-text-secondary)', marginLeft: 8 }}>{rule.notes}</span>}
+                      </div>
+                    ))}
+                  </div>
                 );
-                if (eligible.length === 0) {
-                  return (
-                    <div style={{ textAlign: 'center', padding: '32px 16px', borderRadius: 10, background: 'var(--color-background-secondary)', border: '0.5px dashed var(--color-border-secondary)', fontSize: 13, color: 'var(--color-text-secondary)' }}>
-                      No active campaigns have a rule for {EVENT_TYPES.find(t => t.id === event.eventType)?.label ?? event.eventType} events. Create a campaign with the right event type rule first.
-                    </div>
-                  );
-                }
-                return eligible.map(c => (
-                  <div key={c.id} style={{ padding: '12px 14px', borderRadius: 8, background: 'var(--color-background-secondary)', border: '0.5px solid var(--color-border-tertiary)', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 12 }}>
+              })}
+            </div>
+          )}
+
+          {/* Available campaigns to attach */}
+          {(() => {
+            const eligible = campaigns.filter(c =>
+              c.status === 'active' &&
+              !((c.eventIds ?? []).includes(event.id)) &&
+              (c.rules ?? []).some(r => r.eventTypeId === event.eventType)
+            );
+            if (eligible.length === 0 && attachedCampaigns.length === 0) return (
+              <div style={{ textAlign: 'center', padding: '32px 16px', borderRadius: 10, background: 'var(--color-background-secondary)', border: '0.5px dashed var(--color-border-secondary)', fontSize: 13, color: 'var(--color-text-secondary)' }}>
+                No active campaigns have a rule for {EVENT_TYPES.find(t => t.id === event.eventType)?.label ?? event.eventType} events. Create a campaign with the right event type rule first.
+              </div>
+            );
+            if (eligible.length === 0) return null;
+            return (
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
+                  Attach to campaign
+                </div>
+                <div style={{ padding: '8px 12px', borderRadius: 8, background: '#EEF2FF', border: '0.5px solid #C7D2FE', marginBottom: 12, fontSize: 11, color: '#3730A3' }}>
+                  Only campaigns with a rule covering {EVENT_TYPES.find(t => t.id === event.eventType)?.label ?? event.eventType} events are shown. An event can belong to multiple campaigns.
+                </div>
+                {eligible.map(c => (
+                  <div key={c.id} style={{ padding: '10px 14px', borderRadius: 8, background: 'var(--color-background-secondary)', border: '0.5px solid var(--color-border-tertiary)', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 12 }}>
                     <div style={{ flex: 1 }}>
                       <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-primary)', marginBottom: 2 }}>{c.name}</div>
                       <div style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>
@@ -1107,18 +1104,16 @@ function EventDetail({ event, allocations, partners, campaigns = [], eventTempla
                       </div>
                     </div>
                     {onAttachEventToCampaign && (
-                      <button
-                        onClick={() => onAttachEventToCampaign(c.id, event.id)}
-                        style={{ fontSize: 11, padding: '5px 12px', borderRadius: 6, border: 'none', background: '#DCFCE7', color: '#166534', cursor: 'pointer', fontWeight: 600, flexShrink: 0 }}
-                      >
+                      <button onClick={() => onAttachEventToCampaign(c.id, event.id)}
+                        style={{ fontSize: 11, padding: '5px 12px', borderRadius: 6, border: 'none', background: '#DCFCE7', color: '#166534', cursor: 'pointer', fontWeight: 600, flexShrink: 0 }}>
                         Attach
                       </button>
                     )}
                   </div>
-                ));
-              })()}
-            </div>
-          )}
+                ))}
+              </div>
+            );
+          })()}
         </div>
       )}
 
@@ -1172,7 +1167,6 @@ function NewEventForm({ onSave, onClose, campaigns = [], onAttachEventToCampaign
   const [date,         setDate]         = useState('');
   const [eventType,    setEventType]    = useState('afl');
   const [venue,        setVenue]        = useState('Adelaide Oval');
-  const [playlistName, setPlaylistName] = useState('');
   const [campaignId,   setCampaignId]   = useState('');
 
   const canSave = name.trim() && date;
@@ -1217,23 +1211,9 @@ function NewEventForm({ onSave, onClose, campaigns = [], onAttachEventToCampaign
           <input style={input} value={venue} onChange={e => setVenue(e.target.value)} />
         </div>
 
-        {/* Playlist name — required by Wipro VisionEDGE integration */}
-        <div>
-          <label style={{ ...sectionTitle, display: 'block' }}>
-            Playlist name <span style={{ fontWeight: 400, textTransform: 'none', fontSize: 11 }}>(sent to media player — must be unique per event)</span>
-          </label>
-          <input
-            style={input}
-            placeholder="e.g. Port Adelaide v Richmond — 3 May 2026"
-            value={playlistName}
-            onChange={e => setPlaylistName(e.target.value)}
-          />
-          {!playlistName.trim() && name.trim() && date && (
-            <div style={{ marginTop: 4, fontSize: 11, color: '#92400E' }}>
-              Playlist name will default to event name if left blank
-            </div>
-          )}
-        </div>
+        {/* Playlist name removed — playlist IDs are now auto-generated at zone × state level
+             as {eventId}_{zoneId}_{stateId}. The human-readable name is derived from zone
+             and state labels automatically. No operator input required. */}
 
         {/* CDP-035 — Campaign selector */}
         <div>
@@ -1261,7 +1241,7 @@ function NewEventForm({ onSave, onClose, campaigns = [], onAttachEventToCampaign
 
         <div style={{ display: 'flex', gap: 10 }}>
           <button style={{ ...btn('primary'), flex: 1, opacity: canSave ? 1 : .4 }} disabled={!canSave} onClick={() => {
-            const newEvent = { id: `evt-${Date.now()}`, name: name.trim(), date, eventType, venue: venue.trim(), playlistName: playlistName.trim() || name.trim(), status: 'upcoming', campaignId: campaignId || null };
+            const newEvent = { id: `evt-${Date.now()}`, name: name.trim(), date, eventType, venue: venue.trim(), status: 'upcoming' };
             onSave(newEvent);
             if (campaignId && onAttachEventToCampaign) {
               onAttachEventToCampaign(campaignId, newEvent.id);

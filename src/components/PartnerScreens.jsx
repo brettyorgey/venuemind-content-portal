@@ -198,6 +198,10 @@ export function PartnerUpload({ onNavigate, onUpload, partnerId, allocations, ev
   const handleSubmit = () => {
     if (!allPassed || !selectedAlloc) return;
     setSubmitting(true);
+    // Generate a preview URL from the file object so thumbnails render immediately.
+    // This is an in-memory object URL — valid for the current browser session only.
+    // In production (CDP-044) this will be replaced by a Blob Storage URL after upload.
+    const previewUrl = file.type.startsWith('image/') ? URL.createObjectURL(file) : null;
     setTimeout(() => {
       setSubmitting(false);
       setSubmitted(true);
@@ -207,9 +211,10 @@ export function PartnerUpload({ onNavigate, onUpload, partnerId, allocations, ev
         type: file.type,
         size: file.size,
         status: "pending",
-        uploaded: "2026-04-19",
+        uploaded: new Date().toISOString().split('T')[0],
         partnerId,
         allocationId: selectedAlloc.id,
+        previewUrl,
       });
     }, 1200);
   };
@@ -428,7 +433,7 @@ export function PartnerDetail({ item, onNavigate, onDelete }) {
 
 // ── Partner Proof of Play ──
 
-export function PartnerPoP({ popRecords }) {
+export function PartnerPoP({ popRecords, allocations = [], partnerId = 'maccas' }) {
   const [dateFrom, setDateFrom] = useState("2026-04-01");
   const [dateTo, setDateTo] = useState("2026-04-18");
   const [view, setView] = useState("summary");
@@ -441,7 +446,13 @@ export function PartnerPoP({ popRecords }) {
   const totalMinutes = Math.round((totalPlays * 30) / 60);
   const uniqueDays = new Set(filtered.map(r => r.date)).size;
   const avgPerDay = uniqueDays > 0 ? Math.round(totalPlays / uniqueDays) : 0;
-  const contractedTotal = uniqueDays * 14 * 12;
+  // Delivery rate: sum contracted slots from actual allocations for this partner,
+  // not a hardcoded placeholder formula.
+  const contractedTotal = allocations
+    ? allocations
+        .filter(a => a.partnerId === partnerId)
+        .reduce((sum, a) => sum + (a.slotCount ?? 0), 0)
+    : 0;
   const deliveryPct = contractedTotal > 0 ? Math.min(100, Math.round((totalPlays / contractedTotal) * 100)) : 0;
 
   const byContent = useMemo(() => { const m = {}; filtered.forEach(r => { if (!m[r.contentFilename]) m[r.contentFilename] = { name: r.contentName, filename: r.contentFilename, count: 0 }; m[r.contentFilename].count++; }); return Object.values(m).sort((a, b) => b.count - a.count); }, [filtered]);
